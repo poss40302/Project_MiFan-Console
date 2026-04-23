@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# Nuitka / Build Artifacts (Keep the .exe but ignore the huge build dirs)
+release/*.build/
+release/*.dist/
+release/*.onefile-build/
+nuitka-crash-report.xml
+
+# Logs
+*.log
+mifan_debug.log
+
+# Personal Data (CRITICAL: DO NOT UPLOAD)
+config.json
+
+# IDE / System
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
