@@ -1,15 +1,27 @@
-import sys
-import os
 import subprocess
+import os
+import sys
 import time
 
-# 引入 HUD API
-sys.path.append(r"F:\OtherProject\Build_HUD")
+# --- MODULAR HUD FALLBACK SYSTEM ---
+# 優先嘗試載入視覺化 HUD 模組
+HAS_HUD = False
 try:
-    from hud_api import BuildHUD_API
-except ImportError:
-    print(r"Error: Could not find hud_api.py in F:\OtherProject\Build_HUD")
-    sys.exit(1)
+    # 支援將 Build_HUD 放在專案根目錄或父目錄
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    from Build_HUD.hud_api import BuildHUD_API
+    HAS_HUD = True
+except (ImportError, ModuleNotFoundError):
+    # 如果找不到 HUD 模組，則定義一個偽類 (Mock) 降級為控制台輸出
+    class BuildHUD_API:
+        def __init__(self, *args, **kwargs):
+            print(f"--- Starting Build: {kwargs.get('project_name', 'Unknown')} ---")
+        def update(self, **kwargs):
+            status = kwargs.get('status', '')
+            progress = kwargs.get('progress', '')
+            if status: print(f">> {status} {f'({progress}%)' if progress else ''}")
+        def add_stage(self, *args, **kwargs): pass
+        def update_stage(self, *args, **kwargs): pass
 
 def run_build():
     json_path = os.path.abspath("build_status.json")
@@ -21,26 +33,10 @@ def run_build():
     if os.path.exists("build"):
         try:
             shutil.rmtree("build")
-            hud_api.update(last_log="已清理舊的 build 目錄")
-        except Exception as e:
-            hud_api.update(last_log=f"清理失敗: {e}")
-    
-    # 啟動 HUD 視窗 (背景)
-    hud_script = r"F:\OtherProject\Build_HUD\build_hud.py"
-    subprocess.Popen([sys.executable, hud_script, json_path])
-    time.sleep(2)
+            hud_api.update(status="已清理舊的 Build 目錄")
+        except: pass
 
-    # 定義階段
-    hud_api.add_stage("Env Check", "done")
-    hud_api.add_stage("Sourcing", "pending")
-    hud_api.add_stage("C-Gen", "pending")
-    hud_api.add_stage("Compiling", "pending")
-    hud_api.add_stage("Onefile", "pending")
-
-    # --- Sourcing ---
-    hud_api.update_stage("Sourcing", "running")
-    hud_api.update(progress=15, status="分析依賴中...", last_log="Tracking imports for main.py...")
-    
+    # Nuitka 打包指令
     nuitka_cmd = [
         r".\.venv\Scripts\python.exe", "-m", "nuitka",
         "--onefile",
@@ -49,51 +45,41 @@ def run_build():
         "--include-data-dir=Resourse=Resourse",
         "--windows-icon-from-ico=Resourse/mifan_app_icon.ico",
         "--output-dir=build",
-        "--output-filename=MiFan-Console.exe",
+        "--windows-uac-admin", # 如果需要管理員權限
         "main.py"
     ]
 
-    # 執行 Nuitka 並監控輸出
-    process = subprocess.Popen(nuitka_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8')
+    hud_api.update(status="正在執行 Nuitka 編譯 (這可能需要幾分鐘)...", progress=10)
     
+    process = subprocess.Popen(
+        nuitka_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8"
+    )
+
+    # 監控日誌並簡單估算進度 (Nuitka 沒有標準進度輸出，我們用關鍵字粗略模擬)
     while True:
         line = process.stdout.readline()
         if not line and process.poll() is not None:
             break
         if line:
-            clean_line = line.strip()
-            print(clean_line) # Print for debugging
-            hud_api.update(last_log=clean_line)
-            
-            # 根據輸出更新進度
-            if "Completed Python level compilation" in clean_line:
-                hud_api.update_stage("Sourcing", "done")
-                hud_api.update_stage("C-Gen", "running")
-                hud_api.update(progress=40, status="正在生成 C 代碼...")
-            elif "Generating source code for C backend" in clean_line:
-                hud_api.update(progress=50)
-            elif "Running C compilation" in clean_line:
-                hud_api.update_stage("C-Gen", "done")
-                hud_api.update_stage("Compiling", "running")
-                hud_api.update(progress=65, status="編譯二進位檔案...")
-            elif "Creating single file" in clean_line:
-                hud_api.update_stage("Compiling", "done")
-                hud_api.update_stage("Onefile", "running")
-                hud_api.update(progress=90, status="壓縮 Onefile 封裝...")
+            # print(line.strip()) # 如果想看詳細日誌可以取消註釋
+            if "Scons: Compiling" in line: hud_api.update(status="編譯 C 代碼...", progress=40)
+            if "Creating single file" in line: hud_api.update(status="正在封裝單一執行檔...", progress=80)
 
     if process.returncode == 0:
-        hud_api.update_stage("Onefile", "done")
-        hud_api.update(progress=100, status="✨ 打包完成 (Success)", last_log="Executable ready in build folder.")
-        # Move to release
-        try:
-            if os.path.exists(r"release\MiFan-Console.exe"):
-                os.remove(r"release\MiFan-Console.exe")
-            os.rename(r"build\MiFan-Console.exe", r"release\MiFan-Console.exe")
-            hud_api.update(last_log="Deployed to release folder.")
-        except Exception as e:
-            hud_api.update(last_log=f"Deploy error: {e}")
+        # 搬運產物到 release
+        os.makedirs("release", exist_ok=True)
+        target_exe = os.path.join("build", "MiFan-Console.exe")
+        if os.path.exists(target_exe):
+            shutil.copy(target_exe, os.path.join("release", "MiFan-Console.exe"))
+            hud_api.update(progress=100, status="打包成功！產物已存至 release/", done=True)
+        else:
+            hud_api.update(status="錯誤：找不到產出的 .exe 檔案", progress=0)
     else:
-        hud_api.update(status="❌ 打包失敗 (Failed)", last_log=f"Exit code: {process.returncode}")
+        hud_api.update(status=f"編譯失敗，Exit Code: {process.returncode}", progress=0)
 
 if __name__ == "__main__":
     run_build()
