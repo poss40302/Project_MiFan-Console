@@ -1,6 +1,6 @@
 # 🛸 MiFan-Console (MiFanCommander)
 
-[![Version](https://img.shields.io/badge/version-v1.9.0423-cyan.svg)](https://github.com/)
+[![Version](https://img.shields.io/badge/version-v1.9.0426c-cyan.svg)](https://github.com/)
 
 MiFan-Console 是一款專為「智米風扇」打造的高科技感、懸浮式桌上型控制器 (HUD)。它擁有流暢的形態變換動畫與極速的響應性能，讓您在 Windows 桌面上就能精準掌控涼風。
 
@@ -36,12 +36,16 @@ MiFan-Console 是一款專為「智米風扇」打造的高科技感、懸浮式
 - **核心架構**:
   - `main.py`: UI 邏輯與動畫系統。
   - `backend.py`: Miio 協定處理與異步通訊。
+  - `build_with_hud.py`: 整合 [Build_HUD](https://github.com/poss40302/Build_HUD) 的視覺化編譯腳本。
   - `Resourse/`: UI 所需之科技感圖素資源。
+  - `HandoverManual_V19.md`: 詳細的技術決策與維護手冊。
 
 ## ✨ 核心特色
 - **Smart Ack 同步技術**：結合「物理按壓鎖定」與「狀態達標釋放」，徹底解決 UI 回彈問題。
+- **模式專屬記憶 (Mode Memory)**：為「直吹風」與「自然風」分別記憶風速設定，切換模式時自動還原，無須重新調整。
 - **動態旋轉回饋**：HUD 中心風扇圖示會根據實際風速實時調整旋轉速率，提供直觀的運作反饋。
-- **雙層連線診斷**：精確辨識網路中斷與設備離線。
+- **雙層連線診斷**：精確辨識區域網路中斷與設備離線狀態。
+- **滑動式啟動監控**：內建 `emergency_log` 系統，自動循環保留最後 5 次啟動紀錄，兼顧偵錯與輕量。
 - **極速響應**：採用中斷驅動機制，指令發送近乎零延遲。
 
 ---

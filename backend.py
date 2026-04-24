@@ -26,7 +26,9 @@ class FanControllerThread(QThread):
         self.interrupt_event = threading.Event()
         self.fan = None
         self.log_enabled = self.config_manager.get('log_enabled', False)
-        self.log_file = "mifan_debug.log"
+        log_dir = os.path.join(os.environ.get('APPDATA', ''), 'Project_MiFan_Console')
+        os.makedirs(log_dir, exist_ok=True)
+        self.log_file = os.path.join(log_dir, "mifan_debug.log")
         self._init_fan()
 
     def log_msg(self, msg):

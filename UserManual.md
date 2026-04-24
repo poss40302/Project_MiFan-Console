@@ -55,6 +55,7 @@
 - **擺頭開關 (Oscillate)**：控制風扇左右擺動。
 - **右鍵選單**：
   - **開機自動啟動**：讓 HUD 與您的 Windows 同步啟動。
+  - **輸出偵錯日誌**：開啟後可記錄詳細通訊過程。*注意：開啟/關閉此功能後，需重啟應用程式才會生效。*
   - **通訊設定**：修改 IP/Token。
   - **離開系統**：完全退出並關閉本程式。
 
@@ -71,7 +72,20 @@
 
 ---
 
+## 6. 📂 檔案路徑與資料存放
+
+為了方便管理與備份，MiFan-Console 的所有相關資料均存放於以下路徑：
+
+- **主設定檔**：`%APPDATA%\Project_MiFan_Console\config.json`
+- **偵錯日誌**：`%APPDATA%\Project_MiFan_Console\mifan_debug.log`
+- **啟動日誌 (最後5次)**：`%APPDATA%\Project_MiFan_Console\mifan_startup.log`
+
+> [!TIP]
+> 您可以直接在 Windows 檔案總管的網址列輸入上述路徑（含百分比符號）來快速開啟資料夾。
+
+---
+
 祝您有個涼爽且極具科技感的辦公體驗，指揮官！
 
 ---
-*Last Updated: 2026-04-23 | Version: v1.9.0423*
+*Last Updated: 2026-04-24 | Version: v1.9.0426c*

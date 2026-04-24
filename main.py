@@ -2,22 +2,84 @@ import sys
 import os
 import time
 import ctypes
-import ctypes.wintypes
 from datetime import datetime
-from PyQt6.QtWidgets import (QApplication, QWidget, QPushButton, 
-                             QSlider, QMenu, QDialog, QFormLayout, QLineEdit, 
-                             QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGraphicsDropShadowEffect,
-                             QStackedWidget)
-from PyQt6.QtCore import Qt, QRect, QRectF, QPropertyAnimation, QEasingCurve, QTimer, QPoint, QSize, pyqtSignal
-from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QBrush, QFont, QPixmap, QIcon, QLinearGradient
 
-from config_manager import ConfigManager
-from backend import FanControllerThread
-from autostart import set_autostart, is_autostart_enabled
+# --- EMERGENCY LOGGING (Must be at the top) ---
+def emergency_log(msg):
+    try:
+        log_dir = os.path.join(os.environ.get('APPDATA', ''), 'Project_MiFan_Console')
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "mifan_startup.log")
+        
+        content = []
+        if os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8") as f:
+                content = f.readlines()
+        
+        # If it's a new session start, trim old ones
+        if "Process started" in msg:
+            sessions = []
+            current_session = []
+            for line in content:
+                if "Process started" in line:
+                    if current_session: sessions.append(current_session)
+                    current_session = [line]
+                else:
+                    current_session.append(line)
+            if current_session: sessions.append(current_session)
+            
+            # Keep only last 4 sessions to make room for the new one
+            sessions = sessions[-4:] if len(sessions) > 4 else sessions
+            
+            # Reconstruct content
+            new_content = []
+            for s in sessions: new_content.extend(s)
+            content = new_content
+
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        content.append(f"{ts} | [INIT] | {msg}\n")
+        
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.writelines(content)
+    except: pass
+
+emergency_log("Process started, entering imports...")
+
+try:
+    from PyQt6.QtWidgets import (QApplication, QWidget, QPushButton, 
+                                 QSlider, QMenu, QDialog, QFormLayout, QLineEdit, 
+                                 QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGraphicsDropShadowEffect,
+                                 QStackedWidget)
+    from PyQt6.QtCore import Qt, QRect, QRectF, QPropertyAnimation, QEasingCurve, QTimer, QPoint, QSize, pyqtSignal
+    from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QBrush, QFont, QPixmap, QIcon, QLinearGradient
+    import miio
+    import netifaces
+    from config_manager import ConfigManager
+    from backend import FanControllerThread
+    from autostart import set_autostart, is_autostart_enabled
+    emergency_log("Imports successful.")
+except Exception as e:
+    emergency_log(f"IMPORT ERROR: {str(e)}")
+    sys.exit(1)
 
 APP_NAME = "MiFanCommander"
-VERSION = "v1.9.0423"
-RES_DIR = os.path.join(os.path.dirname(__file__), "Resourse")
+VERSION = "v1.9.0426c"
+
+# --- RESILIENT RESOURCE PATHING ---
+def discover_res_dir():
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "Resourse"), # Nuitka/Source
+        os.path.join(os.path.dirname(sys.executable), "Resourse"), # Standalone
+        os.path.join(os.getcwd(), "Resourse") # Current Dir
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            emergency_log(f"Resource found at: {c}")
+            return c
+    emergency_log("WARNING: Resource directory NOT found!")
+    return candidates[0]
+
+RES_DIR = discover_res_dir()
 CYAN = "#00ffff"
 FONT_ZH = "Microsoft JhengHei"
 FONT_EN = "Arial Narrow"
@@ -291,6 +353,8 @@ class FanConsoleWindow(QWidget):
         self.is_expanded = False
         self.power_on = False
         self.log_enabled = config_manager.get('log_enabled', False)
+        self.mem_normal_speed = 25
+        self.mem_nature_speed = 25
         
         # SLIDER THROTTLE
         self.slider_timer = QTimer(self)
@@ -530,13 +594,23 @@ class FanConsoleWindow(QWidget):
         self.set_expanded(self.power_on)
 
     def toggle_mode(self):
-        m = "nature" if not self.mode_toggle.is_on else "normal"
-        self.backend.set_mode(m)
+        new_mode = "nature" if not self.mode_toggle.is_on else "normal"
+        self.backend.set_mode(new_mode)
+        # RESTORE: Switch mode and restore memory speed immediately
+        target_speed = self.mem_nature_speed if new_mode == "nature" else self.mem_normal_speed
+        self.log_msg(f"模式切換: {new_mode}, 自動還原風速: {target_speed}%")
+        self.last_slider_val = target_speed
+        self.expected_speed = target_speed
+        self.last_slider_interaction = time.time()
+        self.backend.set_speed(target_speed, urgent=True)
 
     def on_slider_changed(self, v): 
         self.log_msg(f"滑桿數值變更: {v}% (物理按壓: {self.speed_slider.is_pressed})")
         self.last_slider_interaction = time.time()
         self.last_slider_val = v
+        # MEMORY: Record intent per mode
+        if self.mode_toggle.is_on: self.mem_nature_speed = v
+        else: self.mem_normal_speed = v
         # Restart timer - only send after 300ms of no changes
         self.slider_timer.start(300)
 
@@ -546,20 +620,28 @@ class FanConsoleWindow(QWidget):
         self.backend.set_speed(self.last_slider_val, urgent=True)
 
     def set_level(self, l): 
-        self.expected_speed = l * 25
-        self.backend.set_speed(l * 25, urgent=True)
+        self.last_slider_val = l * 25
+        self.last_slider_interaction = time.time()
+        self.expected_speed = self.last_slider_val
+        self.mem_nature_speed = self.last_slider_val # Record memory
+        self.backend.set_speed(self.last_slider_val, urgent=True)
     def toggle_osc(self): 
         self.backend.set_oscillate(not self.osc_toggle.is_on)
 
     def on_status_updated(self, status):
-        speed = status.get('speed', 1)
         new_on = status.get('is_on', False)
+        speed = status.get('speed', 1)
+        mode = status.get('mode', 'normal').lower()
+        osc = status.get('oscillate', False)
         
         # SMART ACK CHECK: If speed matches expectation, release guard early
         if self.expected_speed is not None and speed == self.expected_speed:
-            self.log_msg(f"接收狀態更新: speed={speed}. [Smart Ack: 達標解鎖]")
-            self.last_slider_interaction = 0
-            self.expected_speed = None
+            if speed == self.last_slider_val:
+                self.log_msg(f"接收狀態更新: speed={speed}. [Smart Ack: 達標解鎖]")
+                self.last_slider_interaction = 0
+                self.expected_speed = None
+            else:
+                self.log_msg(f"接收狀態更新: speed={speed}. [Smart Ack: 暫不解鎖] (原因: 使用者又有新動作 {self.last_slider_val})")
 
         # LOGGING DECISION
         is_p = self.speed_slider.is_pressed
@@ -572,15 +654,14 @@ class FanConsoleWindow(QWidget):
             self.log_msg(f"接收狀態更新: speed={speed}, on={new_on}. [決策: 跳過] (原因: 鎖定中, 剩餘 {rem:.2f}s)")
             return
         else:
-            self.log_msg(f"接收狀態更新: speed={speed}, on={new_on}. [決策: 更新]")
+            self.log_msg(f"接收狀態更新: speed={speed}, on={new_on}. [決議: 更新]")
+            # Sync memory during idle updates to learn habits
+            if mode == "nature": self.mem_nature_speed = speed
+            else: self.mem_normal_speed = speed
 
         if new_on != self.power_on:
             self.power_on = new_on
             self.set_expanded(self.power_on)
-        
-        speed = status.get('speed', 1)
-        mode = status.get('mode', 'normal').lower()
-        osc = status.get('oscillate', False)
         
         self.btn_icon.set_speed(self.power_on, speed)
         
@@ -613,7 +694,9 @@ class FanConsoleWindow(QWidget):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         line = f"{ts} | [UI]   | {msg}\n"
         try:
-            with open("mifan_debug.log", "a", encoding="utf-8") as f:
+            log_dir = os.path.join(os.environ.get('APPDATA', ''), 'Project_MiFan_Console')
+            log_path = os.path.join(log_dir, "mifan_debug.log")
+            with open(log_path, "a", encoding="utf-8") as f:
                 f.write(line)
         except Exception: pass
 
@@ -693,14 +776,28 @@ class SettingsDialog(QDialog):
         self.cm.set('fan_ip', self.ip.text().strip()); self.cm.set('fan_token', self.tk.text().strip()); self.accept()
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    # Priority 1: Use .ico for best compatibility, Priority 2: Use .png fallback
-    ico_path = os.path.join(RES_DIR, "mifan_app_icon.ico")
-    png_path = os.path.join(RES_DIR, "mifan_app_icon.png")
-    
-    if os.path.exists(ico_path): app.setWindowIcon(QIcon(ico_path))
-    elif os.path.exists(png_path): app.setWindowIcon(QIcon(png_path))
-    
-    win = FanConsoleWindow(ConfigManager())
-    win.show()
-    sys.exit(app.exec())
+    try:
+        emergency_log("Entering main loop...")
+        app = QApplication(sys.argv)
+        # Priority 1: Use .ico for best compatibility, Priority 2: Use .png fallback
+        ico_path = os.path.join(RES_DIR, "mifan_app_icon.ico")
+        png_path = os.path.join(RES_DIR, "mifan_app_icon.png")
+        
+        if os.path.exists(ico_path): app.setWindowIcon(QIcon(ico_path))
+        elif os.path.exists(png_path): app.setWindowIcon(QIcon(png_path))
+        
+        win = FanConsoleWindow(ConfigManager())
+        win.show()
+        emergency_log("Window shown successfully.")
+        sys.exit(app.exec())
+    except Exception as e:
+        import traceback
+        log_dir = os.path.join(os.environ.get('APPDATA', ''), 'Project_MiFan_Console')
+        log_path = os.path.join(log_dir, "mifan_debug.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"\n{ts} | [CRASH] | Critical startup error:\n")
+            f.write(traceback.format_exc())
+            f.write("-" * 50 + "\n")
+        emergency_log(f"CRITICAL ERROR: {str(e)}")
+        sys.exit(1)

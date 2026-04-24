@@ -23,3 +23,23 @@ config.json
 .idea/
 Thumbs.db
 desktop.ini
+
+# Build and Artifacts
+build/
+dist/
+release/*.exe
+release/*.log
+*.bin
+*.onefile-build/
+
+# Environment
+.venv/
+__pycache__/
+*.pyc
+
+# Project Specific Logs/Temp
+build_status.json
+demo_status.json
+mifan_debug.log
+mifan_startup.log
+nuitka-crash-report.xml
