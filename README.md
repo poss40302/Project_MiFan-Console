@@ -1,12 +1,12 @@
 # 🛸 MiFan-Console (MiFanCommander)
 
-[![Version](https://img.shields.io/badge/version-v1.9.0426c-cyan.svg)](https://github.com/)
+[![Version](https://img.shields.io/badge/version-v1.9.0426c-cyan.svg)](https://github.com/poss40302/Project_MiFan-Console/releases/latest)
 
 MiFan-Console 是一款專為「智米風扇」打造的高科技感、懸浮式桌上型控制器 (HUD)。它擁有流暢的形態變換動畫與極速的響應性能，讓您在 Windows 桌面上就能精準掌控涼風。
 
 ## 📥 下載與執行
-若您只想直接使用工具，請至以下路徑下載已封裝好的執行檔：
-- [MiFan-Console.exe](release/MiFan-Console.exe) (點擊進入後點 Download 即可)
+若您只想直接使用工具，請至以下連結下載最新版的執行檔：
+- [MiFan-Console.exe 最新版下載](https://github.com/poss40302/Project_MiFan-Console/releases/latest/download/MiFan-Console.exe)
 
 ## 📋 支援設備 (Supported Models)
 本工具目前針對以下型號進行精調與適配：
